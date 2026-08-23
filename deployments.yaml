@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+# Server Section ----- API
+  name: srv-judge0
+  labels:
+    app: judge0
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: srv-judge0
+
+  template:
+    metadata:
+      labels:
+        app: srv-judge0
+
+    spec:
+      containers:
+      - name: srv-judge0
+        image: judge0/judge0:latest
+
+        securityContext:
+          privileged: true
+          allowPrivilegeEscalation: true
+
+        ports:
+        - containerPort: 2358
+          name: http
+
+        volumeMounts:
+          - name: vol-submissions
+            # ./judge0.conf:/judge0.conf:ro
+            mountPath: /judge0.conf
+            subPath: judge0.conf
+            readOnly: true
+      volumes:
+        - name: vol-submissions
+          secret:
+            secretName: vol-config
+
+---
+
+# worket section
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wk-judge0
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: wk-judge0
+
+  template:
+    metadata:
+      labels:
+        app: wk-judge0
+
+    spec:
+      containers:
+        - name: wk-judge0
+          image: judge0/judge0:latest
+
+          command:
+            - "./scripts/workers"
+
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+
+          volumeMounts:
+            - name: vol-workers
+              mountPath: /judge0.conf
+              subPath: judge0.conf
+              readOnly: true
+      volumes:
+        - name: vol-workers
+          secret:
+            secretName: vol-config
+
+---
+        
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: redis
+
+  template:
+    metadata:
+      labels:
+        app: redis
+
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2.4
+
+          command:
+            - "bash"
+            - "-c"
+
+          args:
+            - 'docker-entrypoint.sh --appendonly no --requirepass "$REDIS_PASSWORD"'
+
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: judge0-env
+                  key: REDIS_PASSWORD
+
+          ports:
+            - containerPort: 6379
+              name: redis
+              
