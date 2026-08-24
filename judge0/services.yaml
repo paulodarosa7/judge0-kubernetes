@@ -4,7 +4,7 @@ metadata:
   name: judge0-service
 
 spec:
-  type: ClusterIP
+  type: NodePort
 
   selector:
     app: srv-judge0
@@ -14,7 +14,7 @@ spec:
       protocol: TCP
       port: 2358
       targetPort: 2358
-
+      nodePort: 30000
 
 ---
 
@@ -33,11 +33,30 @@ spec:
     - name: redis
       protocol: TCP
       port: 6379
-      targetPort: 6379kind: Service
+      targetPort: 6379
+      kind: Service
 metadata:
-  name: judge0-redis
+  name: redis
 spec:
   ports:
     - port: 6379
   selector:
-    app: redis-judge0
+    app: redis
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+
+spec:
+  type: ClusterIP
+
+  selector:
+    app: db
+
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
