@@ -78,13 +78,90 @@ minikube start -p judge0-local --driver=docker --cpus=2 --memory=4096
 
 ## Implantação
 
+A ideia é que o ambiente possa ser reproduzido em outra máquina apenas seguindo os passos abaixo.
+
+### 1. Criar o cluster Minikube
+
+Com o Docker Desktop aberto:
+
+```powershell
+minikube start -p judge0-local --driver=docker --cpus=2 --memory=4096
+```
+
+Verifique o cluster:
+
+```powershell
+kubectl get nodes
+```
+
+### 2. Criar os Secrets utilizados pelo Judge0
+
+Os Deployments dependem de dois Secrets:
+
+```text
+vol-config
+judge0-env
+```
+
+Eles são criados a partir do arquivo:
+
+```text
+config/judge0.conf
+```
+
+Crie o Secret utilizado para montar o arquivo `/judge0.conf`:
+
+```powershell
+kubectl create secret generic vol-config `
+  --from-file=judge0.conf=config/judge0.conf `
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Crie o Secret utilizado pelas variáveis de ambiente do Redis e PostgreSQL:
+
+```powershell
+kubectl create secret generic judge0-env `
+  --from-env-file=config/judge0.conf `
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### Atenção ao formato do `judge0.conf`
+
+O arquivo:
+
+```text
+config/judge0.conf
+```
+
+deve utilizar quebra de linha:
+
+```text
+LF
+```
+
+e não:
+
+```text
+CRLF
+```
+
+Caso seja salvo com CRLF no Windows, o container pode apresentar erros semelhantes a:
+
+```text
+$'\r': command not found
+```
+
+No VS Code, o formato pode ser alterado no canto inferior direito do editor, trocando `CRLF` por `LF`.
+
+### 3. Aplicar os manifests
+
 Com os arquivos YAML na raiz do projeto:
 
 ```powershell
 kubectl apply -f .
 ```
 
-Verifique os recursos:
+Verifique os recursos principais:
 
 ```powershell
 kubectl get deployments
@@ -92,10 +169,33 @@ kubectl get pods
 kubectl get svc
 ```
 
-Para acompanhar os Pods:
+Verifique também o ambiente de monitoramento:
+
+```powershell
+kubectl get pods -n monitor
+```
+
+Para acompanhar a inicialização dos Pods:
 
 ```powershell
 kubectl get pods -w
+```
+
+O ambiente estará pronto quando os componentes principais estiverem semelhantes a:
+
+```text
+db-xxxxx             1/1   Running
+redis-xxxxx          1/1   Running
+srv-judge0-xxxxx     1/1   Running
+wk-judge0-xxxxx      1/1   Running
+```
+
+E o monitoramento:
+
+```text
+grafana-xxxxx              1/1   Running
+prometheus-xxxxx           1/1   Running
+kube-state-metrics-xxxxx   1/1   Running
 ```
 
 ---
@@ -149,69 +249,107 @@ Accepted
 
 ---
 
-# Teste com múltiplas requisições
+# Teste com múltiplas submissões
 
-O script abaixo envia **10 submissões simultâneas** para o Judge0 e registra o tempo individual de cada uma.
+Os testes atuais utilizam **200 submissões assíncronas**, permitindo comparar a capacidade de processamento com diferentes quantidades de Workers.
+
+Diferente do teste com:
+
+```text
+wait=true
+```
+
+as submissões são enviadas sem aguardar o resultado imediato. Cada chamada retorna um token e, posteriormente, o script consulta os tokens até que todas as submissões tenham sido concluídas.
+
+Isso permite medir o tempo total para processar o lote.
+
+## Script de teste
 
 ```powershell
-$uri = 'http://127.0.0.1:2358/submissions?base64_encoded=false&wait=true'
+$uri = 'http://127.0.0.1:2358/submissions?base64_encoded=false'
 
 $body = @{
     source_code = 'print("Teste Kubernetes")'
     language_id = 71
-} | ConvertTo-Json
+} | ConvertTo-Json -Compress
 
-$jobs = foreach ($i in 1..10) {
+$tokens = @()
+$errosEnvio = 0
 
-    Start-Job -ArgumentList $i,$uri,$body -ScriptBlock {
+$inicio = Get-Date
 
-        param($id,$uri,$body)
+for ($i = 1; $i -le 200; $i++) {
 
-        $tempo = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
 
-        try {
+        $r = Invoke-RestMethod `
+            -Uri $uri `
+            -Method POST `
+            -ContentType 'application/json' `
+            -Body $body `
+            -ErrorAction Stop
 
-            $resultado = Invoke-RestMethod `
-                -Uri $uri `
-                -Method POST `
-                -ContentType 'application/json' `
-                -Body $body
+        $tokens += $r.token
+    }
+    catch {
 
-            $tempo.Stop()
-
-            [PSCustomObject]@{
-                Requisicao = $id
-                Status     = $resultado.status.description
-                Tempo      = [math]::Round($tempo.Elapsed.TotalSeconds, 3)
-            }
-
-        }
-        catch {
-
-            $tempo.Stop()
-
-            [PSCustomObject]@{
-                Requisicao = $id
-                Status     = "ERRO"
-                Tempo      = [math]::Round($tempo.Elapsed.TotalSeconds, 3)
-            }
-        }
+        $errosEnvio++
+        Write-Host "Erro ao enviar submissão $i"
     }
 }
 
-$jobs | Wait-Job | Out-Null
+Write-Host "Tokens recebidos: $($tokens.Count)"
+Write-Host "Tokens únicos: $(($tokens | Select-Object -Unique).Count)"
+Write-Host "Erros de envio: $errosEnvio"
 
-$resultados = $jobs | Receive-Job
+$concluidos = @{}
 
-$jobs | Remove-Job
+while ($concluidos.Count -lt $tokens.Count) {
 
-$resultados |
-    Sort-Object Requisicao |
-    Select-Object Requisicao, Status, Tempo |
-    Format-Table
+    foreach ($token in $tokens) {
+
+        if (-not $concluidos.ContainsKey($token)) {
+
+            $r = Invoke-RestMethod `
+                -Uri "http://127.0.0.1:2358/submissions/$token"
+
+            if ($r.status.id -gt 2) {
+                $concluidos[$token] = $r.status.description
+            }
+        }
+    }
+
+    Write-Host "`rConcluídos: $($concluidos.Count)/$($tokens.Count)" -NoNewline
+
+    Start-Sleep -Milliseconds 300
+}
+
+$fim = Get-Date
+
+$tempoTotal = ($fim - $inicio).TotalSeconds
+
+$workers = kubectl get deployment wk-judge0 -o jsonpath='{.spec.replicas}'
+
+Write-Host ""
+Write-Host "============================"
+Write-Host "Workers:       $workers"
+Write-Host "Submissoes:    $($tokens.Count)"
+Write-Host "Concluidas:    $($concluidos.Count)"
+Write-Host "Tempo total:   $([math]::Round($tempoTotal,3)) s"
+Write-Host "Throughput:    $([math]::Round($concluidos.Count/$tempoTotal,2)) submissoes/s"
+Write-Host "============================"
 ```
 
-Esse teste pode ser repetido alterando apenas a quantidade de réplicas do Worker.
+Para uma rodada ser considerada válida, o esperado é:
+
+```text
+Tokens recebidos: 200
+Tokens únicos: 200
+Erros de envio: 0
+Concluídas: 200
+```
+
+## Cenários
 
 ### 1 Worker
 
@@ -231,10 +369,18 @@ kubectl scale deployment wk-judge0 --replicas=2
 kubectl scale deployment wk-judge0 --replicas=3
 ```
 
-Antes de iniciar um novo teste, confirme que todos os Workers estão disponíveis:
+Antes de cada rodada, aguarde todos os Workers ficarem prontos:
 
 ```powershell
 kubectl get pods -l app=wk-judge0
+```
+
+O objetivo é manter as mesmas condições de teste e alterar apenas a quantidade de réplicas dos Workers.
+
+Os resultados são registrados no arquivo:
+
+```text
+REGISTROS.md
 ```
 
 ---
@@ -317,7 +463,7 @@ senha: admin
 
 # Registro dos experimentos
 
-Os resultados dos testes são armazenados em:
+Os resultados e observações dos experimentos são armazenados em:
 
 ```text
 REGISTROS.md
@@ -327,6 +473,54 @@ A ideia é manter separados:
 
 - **README.md**: como o projeto funciona e como executá-lo;
 - **REGISTROS.md**: resultados obtidos durante os experimentos.
+
+---
+
+## Reprodução rápida em outra máquina
+
+Resumo do processo para subir o ambiente em outro computador:
+
+```text
+1. Instalar Docker Desktop, Minikube e kubectl
+2. Clonar este repositório
+3. Garantir que config/judge0.conf esteja em LF
+4. Criar o cluster Minikube
+5. Criar os Secrets vol-config e judge0-env
+6. Executar kubectl apply -f .
+7. Confirmar os Pods
+8. Abrir os port-forwards
+```
+
+Comandos principais:
+
+```powershell
+minikube start -p judge0-local --driver=docker --cpus=2 --memory=4096
+
+kubectl create secret generic vol-config `
+  --from-file=judge0.conf=config/judge0.conf `
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl create secret generic judge0-env `
+  --from-env-file=config/judge0.conf `
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl apply -f .
+
+kubectl get pods
+kubectl get pods -n monitor
+```
+
+API Judge0:
+
+```powershell
+kubectl port-forward svc/judge0-service 2358:2358
+```
+
+Grafana:
+
+```powershell
+kubectl port-forward -n monitor svc/grafana 3000:3000
+```
 
 ---
 
