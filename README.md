@@ -47,14 +47,18 @@ Exemplo:
 ```text
 judge0-kubernetes/
 |
-|-- deployments.yaml
-|-- services.yaml
-|-- database.yaml
-|-- monitor.yaml
-|-- config/
-|   `-- judge0.conf
+|-- judge0/
+|   |-- deployments.yaml
+|   |-- services.yaml
+|   |-- database.yaml
+|   |-- REGISTROS.md
+|   |-- config/
+|      `-- judge0.conf
+|-- monitor/
+|   `-- monitor.yaml
 |
-`-- REGISTROS.md
+|
+`-- README.md
 ```
 
 ---
