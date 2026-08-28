@@ -66,6 +66,15 @@ spec:
         - name: wk-judge0
           image: judge0/judge0:latest
 
+          # configurando os recursos de CPU e memória para o container (preparando o HPA)
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+
           command:
             - "./scripts/workers"
 
