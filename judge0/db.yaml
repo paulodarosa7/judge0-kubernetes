@@ -41,6 +41,16 @@ spec:
             - name: vol-db
               mountPath: /var/lib/postgresql/data
 
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      nodeSelector:
+        kubernetes.io/arch: amd64
+
       volumes:
         - name: vol-db
           emptyDir: {}
