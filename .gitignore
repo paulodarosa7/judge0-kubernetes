@@ -1,0 +1,47 @@
+# Segredos / variaveis
+.env
+.env.*
+!.env.example
+
+# Configuracao real do Judge0
+judge0.conf
+
+# Kubernetes - arquivos sensiveis
+kubeconfig
+*.kubeconfig
+secrets.yaml
+secret.yaml
+*-secret.yaml
+*-secrets.yaml
+
+# Chaves / certificados
+*.key
+*.pem
+id_rsa
+id_ed25519
+
+# Banco / backups
+*.sql
+*.dump
+*.backup
+backups/
+
+# Logs
+*.log
+logs/
+
+# Dados locais
+data/
+postgres-data/
+redis-data/
+
+# Sistema / editor
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporarios
+*.tmp
+*.swp
+*~
