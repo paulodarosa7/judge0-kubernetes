@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: redis
+
+  template:
+    metadata:
+      labels:
+        app: redis
+        role: primary
+
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        kubernetes.io/hostname: srv-kube-worker-2
+
+      containers:
+        - name: redis
+          image: redis:7.2.4
+
+          command:
+            - "sh"
+            - "-c"
+
+          args:
+            - |
+              exec docker-entrypoint.sh \
+                --appendonly yes \
+                --requirepass "$REDIS_PASSWORD"
+
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: judge0-env
+                  key: REDIS_PASSWORD
+
+          ports:
+            - containerPort: 6379
+              name: redis
+
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-data

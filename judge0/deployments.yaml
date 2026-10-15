@@ -1,12 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-# Server Section ----- API
   name: srv-judge0
   labels:
-    app: judge0
+    app: srv-judge0
 spec:
-  replicas: 1
+  replicas: 2
+
+  strategy:  
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
 
   selector:
     matchLabels:
@@ -16,11 +21,33 @@ spec:
     metadata:
       labels:
         app: srv-judge0
-
     spec:
+    # garante que rode em um node amd64 e nao na raspberry
+      nodeSelector:
+        kubernetes.io/arch: amd64  
+      # garante que as duas instancias ficam em nodes diferentes.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                    - srv-judge0
+              topologyKey: kubernetes.io/hostname  
+
       containers:
       - name: srv-judge0
         image: judge0/judge0:latest
+
+        resources:
+           requests:
+             cpu: "250m"
+             memory: "256Mi"
+           limits:
+             cpu: "1000m"
+             memory: "1024Mi"
 
         securityContext:
           privileged: true
@@ -50,7 +77,7 @@ metadata:
   name: wk-judge0
 
 spec:
-  replicas: 1
+  replicas: 4
 
   selector:
     matchLabels:
@@ -62,6 +89,9 @@ spec:
         app: wk-judge0
 
     spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64 # garante que nao caia na rasberry, para os workers nao existe afinidade de nodes.
+
       containers:
         - name: wk-judge0
           image: judge0/judge0:latest
@@ -69,11 +99,11 @@ spec:
           # configurando os recursos de CPU e memória para o container (preparando o HPA)
           resources:
             requests:
-              cpu: "250m"
-              memory: "256Mi"
-            limits:
-              cpu: "1000m"
+              cpu: "500m"
               memory: "512Mi"
+            limits:
+              cpu: "1500m"
+              memory: "2048Mi"
 
           command:
             - "./scripts/workers"
@@ -91,46 +121,3 @@ spec:
         - name: vol-workers
           secret:
             secretName: vol-config
-
----
-        
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: redis
-
-spec:
-  replicas: 1
-
-  selector:
-    matchLabels:
-      app: redis
-
-  template:
-    metadata:
-      labels:
-        app: redis
-
-    spec:
-      containers:
-        - name: redis
-          image: redis:7.2.4
-
-          command:
-            - "bash"
-            - "-c"
-
-          args:
-            - 'docker-entrypoint.sh --appendonly no --requirepass "$REDIS_PASSWORD"'
-
-          env:
-            - name: REDIS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: judge0-env
-                  key: REDIS_PASSWORD
-
-          ports:
-            - containerPort: 6379
-              name: redis
-              

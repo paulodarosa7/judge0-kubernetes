@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-replica-data
+
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  storageClassName: ""
+
+  volumeName: redis-pv-replica
+
+  resources:
+    requests:
+      storage: 5Gi

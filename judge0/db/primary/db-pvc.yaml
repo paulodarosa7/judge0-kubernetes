@@ -1,0 +1,14 @@
+# Requisicao de armazenamento persistente para o PostgreSQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  storageClassName: ""
+  volumeName: postgres-pv-primary
+  resources:
+    requests:
+      storage: 10Gi

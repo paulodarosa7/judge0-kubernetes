@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-replica
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: db-replica
+
+  template:
+    metadata:
+      labels:
+        app: db-replica
+        role: replica
+
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        kubernetes.io/hostname: srv-kube-worker-2
+
+      initContainers:
+        - name: clone-primary
+          image: postgres:16-alpine
+
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-replication
+                  key: POSTGRES_REPLICATION_PASSWORD
+
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+
+              if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+                echo "Copiando banco do PostgreSQL Primary..."
+
+                chown -R 70:70 /var/lib/postgresql/data
+
+                su-exec postgres pg_basebackup \
+                  -h db \
+                  -p 5432 \
+                  -U replicator \
+                  -D /var/lib/postgresql/data \
+                  -Fp \
+                  -Xs \
+                  -P
+
+                echo "db:5432:*:replicator:$PGPASSWORD" \
+                  > /var/lib/postgresql/data/.pgpass
+
+                chown 70:70 /var/lib/postgresql/data/.pgpass
+                chmod 600 /var/lib/postgresql/data/.pgpass
+
+                touch /var/lib/postgresql/data/standby.signal
+
+                echo "primary_conninfo = 'host=db port=5432 user=replicator passfile=/var/lib/postgresql/data/.pgpass application_name=db-replica'" \
+                  >> /var/lib/postgresql/data/postgresql.auto.conf
+
+                chown -R 70:70 /var/lib/postgresql/data
+
+                echo "Replica preparada."
+              else
+                echo "Banco existente encontrado. Clone nao necessario."
+              fi
+
+          volumeMounts:
+            - name: vol-db-replica
+              mountPath: /var/lib/postgresql/data
+
+      containers:
+        - name: db-replica
+          image: postgres:16-alpine
+
+          env:
+            - name: POSTGRES_DB
+              value: judge0
+
+            - name: POSTGRES_USER
+              value: judge0
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: judge0-env
+                  key: POSTGRES_PASSWORD
+
+          ports:
+            - containerPort: 5432
+              name: postgres
+
+          volumeMounts:
+            - name: vol-db-replica
+              mountPath: /var/lib/postgresql/data
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+      volumes:
+        - name: vol-db-replica
+          persistentVolumeClaim:
+            claimName: postgres-replica-data

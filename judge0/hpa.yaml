@@ -10,8 +10,8 @@ spec:
     kind: Deployment
     name: wk-judge0
 
-  minReplicas: 1
-  maxReplicas: 5
+  minReplicas: 4
+  maxReplicas: 10
 
   metrics:
     - type: Resource
@@ -19,4 +19,4 @@ spec:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 75
+          averageUtilization: 100

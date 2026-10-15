@@ -53,6 +53,5 @@ spec:
 
       volumes:
         - name: vol-db
-          emptyDir: {}
-
-
+          persistentVolumeClaim:
+            claimName: postgres-data

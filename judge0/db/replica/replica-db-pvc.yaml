@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-replica-data
+
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  storageClassName: ""
+
+  volumeName: postgres-pv-replica
+
+  resources:
+    requests:
+      storage: 10Gi
