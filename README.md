@@ -125,7 +125,7 @@ affinity:
         topologyKey: kubernetes.io/hostname
 ```
 
-Como existem apenas dois Workers, o RollingUpdate da API pode ser configurado para não tentar criar uma terceira instância durante uma atualização:
+Como existem apenas dois node Workers no cluster Kubernetes, o RollingUpdate da API pode ser configurado para não tentar criar uma terceira instância durante uma atualização:
 
 ```yaml
 strategy:
