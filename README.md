@@ -1,6 +1,6 @@
 # Judge0 em Kubernetes
 
-> Infraestrutura distribuída para execução automatizada de códigos do **Dev³**, com foco em escalabilidade, distribuição de carga, persistência e disponibilidade.
+> Infraestrutura distribuída para execução automatizada de códigos, com foco em escalabilidade, distribuição de carga, persistência e disponibilidade.
 
 Este repositório reúne os manifests, configurações e registros experimentais utilizados no Trabalho de Conclusão de Curso **“Avaliação de uma Infraestrutura Kubernetes para Execução Automatizada de Códigos: Escalabilidade, Distribuição de Carga e Disponibilidade”**.
 
@@ -22,14 +22,14 @@ A infraestrutura foi construída para permitir a avaliação prática de:
 - comportamento do ambiente durante falhas de Pods e nós;
 - disponibilidade da aplicação durante os experimentos.
 
-> O objetivo não é substituir o Dev³ ou modificar sua lógica de negócio. O cluster fornece a infraestrutura responsável pela execução automatizada dos códigos enviados pela plataforma.
+> O objetivo não é substituir o a plataforma ou modificar sua lógica de negócio. O cluster fornece a infraestrutura responsável pela execução automatizada dos códigos enviados pela plataforma.
 
 ---
 
 # Arquitetura atual
 
 ```text
-                         Dev³
+                         Plataforma web
                           |
                           v
                 +-------------------+
@@ -544,7 +544,7 @@ ou:
 curl http://<NODE_IP>:<NODEPORT>/languages
 ```
 
-O Dev³ deve apontar para o `Service`, e não diretamente para o IP de um Pod da API.
+O serviço deve apontar para o `Service`, e não diretamente para o IP de um Pod da API.
 
 ---
 
