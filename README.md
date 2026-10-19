@@ -1,6 +1,8 @@
 # Judge0 no Kubernetes: Alta Disponibilidade, Escalabilidade e Replicação
 
-> Infraestrutura distribuída para execução automatizada de códigos, com foco em escalabilidade, distribuição de carga, persistência e disponibilidade.
+> Infraestrutura Kubernetes para execução automatizada de códigos com Judge0, desenvolvida e avaliada em um cluster físico.
+
+O projeto explora escalabilidade horizontal com HPA, distribuição de carga, persistência, Redis Sentinel, replicação PostgreSQL, monitoramento com Prometheus e Grafana, testes de carga e experimentos de failover.
 
 Este repositório reúne os manifests, configurações e registros experimentais utilizados no Trabalho de Conclusão de Curso **“Avaliação de uma Infraestrutura Kubernetes para Execução Automatizada de Códigos: Escalabilidade, Distribuição de Carga e Disponibilidade”**.
 
