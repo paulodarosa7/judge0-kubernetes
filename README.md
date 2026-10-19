@@ -1,4 +1,4 @@
-# Judge0 em Kubernetes
+# Judge0 no Kubernetes: Alta Disponibilidade, Escalabilidade e Replicação
 
 > Infraestrutura distribuída para execução automatizada de códigos, com foco em escalabilidade, distribuição de carga, persistência e disponibilidade.
 
