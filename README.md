@@ -710,6 +710,21 @@ minikube start -p judge0-local \
 
 O ambiente físico passou a ser utilizado posteriormente para avaliar distribuição real entre máquinas, persistência local, falhas de nós e replicação entre Workers.
 
+## Resultados experimentais
+
+A infraestrutura foi submetida a diferentes cenários de carga e falha,
+incluindo:
+
+- até 2.000 submissões em ambiente saudável;
+- testes com diferentes níveis de concorrência;
+- escalabilidade horizontal dos Workers;
+- perda controlada de nodes;
+- falha do Redis Primary;
+- falha do PostgreSQL Primary;
+- replicação de dados;
+- failover automático utilizando Redis Sentinel;
+- análise de throughput, latência, p95, erros e tempo de recuperação.
+
 ---
 
 # Limitações atuais
