@@ -22,7 +22,7 @@ Este repositório reúne os manifests, scripts e registros experimentais utiliza
 
 > **Avaliação de uma Infraestrutura Kubernetes para Execução Automatizada de Códigos: Escalabilidade, Distribuição de Carga e Disponibilidade**
 
-O estudo faz parte do **Dev³ — Sistema de Avaliação Automática de Código com Analytics de Aprendizagem e Apoio Docente por Inteligência Artificial**. A plataforma web permanece fora do cluster e utiliza o Judge0 para receber, enfileirar, executar e consultar submissões de código.
+O estudo faz parte de um projeto na qual colocamos em prática o motor de execução judge0 da plataforma avaliadora de códigos em pleno funcionamento em um cluster Kubernetes físico e totalmente _self-hosted_. A plataforma web permanece fora do cluster e utiliza o Judge0 para receber, enfileirar, executar e consultar submissões de código.
 
 O foco do projeto não é modificar a lógica do Judge0 ou da plataforma. O objetivo é avaliar, na prática, como a infraestrutura influencia:
 
