@@ -48,7 +48,7 @@ O foco do projeto não é modificar a lógica do Judge0 ou da plataforma. O obje
 ## Arquitetura experimental
 
 ```text
-                         Dev³ / cliente de carga
+                          cliente de carga
                                   |
                                   v
                        +---------------------+
