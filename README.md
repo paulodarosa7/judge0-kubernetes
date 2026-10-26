@@ -286,6 +286,7 @@ Mantenha apenas modelos como `.env.example` e `judge0.conf.example`.
 - o control plane está concentrado em um único node ARM com memória limitada;
 - a disponibilidade temporal formal ainda precisa ser medida em uma janela definida;
 - os resultados representam este cluster e não devem ser tratados como limites universais do Judge0 ou do Kubernetes.
+- a limitação do controlplane e a falta de mais uma máquina até o momento impediu aplicar a alta disponibilidade
 
 ## Tecnologias
 
