@@ -1,838 +1,311 @@
-# Judge0 no Kubernetes: Alta Disponibilidade, Escalabilidade e Replicação
+<p align="center">
+  <img src="docs/images/social-preview.jpg" alt="Judge0 no Kubernetes" width="100%">
+</p>
 
-> Infraestrutura Kubernetes para execução automatizada de códigos com Judge0, desenvolvida e avaliada em um cluster físico.
+<h1 align="center">Judge0 no Kubernetes</h1>
 
-O projeto explora escalabilidade horizontal com HPA, distribuição de carga, persistência, Redis Sentinel, replicação PostgreSQL, monitoramento com Prometheus e Grafana, testes de carga e experimentos de failover.
+<p align="center">
+  <strong>Escalabilidade, persistência, replicação e experimentos de disponibilidade em um cluster físico.</strong>
+</p>
 
-Este repositório reúne os manifests, configurações e registros experimentais utilizados no Trabalho de Conclusão de Curso **“Avaliação de uma Infraestrutura Kubernetes para Execução Automatizada de Códigos: Escalabilidade, Distribuição de Carga e Disponibilidade”**.
+<p align="center">
+  <img src="https://img.shields.io/badge/Kubernetes-Orquestração-326CE5?logo=kubernetes&logoColor=white" alt="Kubernetes">
+  <img src="https://img.shields.io/badge/Judge0-Execução%20de%20código-2F80ED" alt="Judge0">
+  <img src="https://img.shields.io/badge/Redis-Sentinel-DC382D?logo=redis&logoColor=white" alt="Redis Sentinel">
+  <img src="https://img.shields.io/badge/PostgreSQL-Streaming%20Replication-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/Prometheus%20%2B%20Grafana-Observabilidade-F46800?logo=prometheus&logoColor=white" alt="Prometheus e Grafana">
+</p>
 
-O projeto parte do Judge0 como mecanismo de execução e avaliação de submissões e utiliza Kubernetes para separar e distribuir API, Workers, fila e banco de dados. O ambiente foi inicialmente validado em Minikube e posteriormente migrado para um **cluster físico experimental**, que atualmente concentra os testes do trabalho.
+## Sobre o projeto
 
----
+Este repositório reúne os manifests, scripts e registros experimentais utilizados no Trabalho de Conclusão de Curso:
 
-## Objetivos do projeto
+> **Avaliação de uma Infraestrutura Kubernetes para Execução Automatizada de Códigos: Escalabilidade, Distribuição de Carga e Disponibilidade**
 
-A infraestrutura foi construída para permitir a avaliação prática de:
+O estudo faz parte do **Dev³ — Sistema de Avaliação Automática de Código com Analytics de Aprendizagem e Apoio Docente por Inteligência Artificial**. A plataforma web permanece fora do cluster e utiliza o Judge0 para receber, enfileirar, executar e consultar submissões de código.
 
-- distribuição das requisições entre múltiplas instâncias da API;
-- processamento concorrente das submissões por múltiplos Workers;
-- escalabilidade horizontal dos Workers;
-- comportamento da fila Redis sob carga;
-- persistência dos dados;
-- replicação do PostgreSQL e do Redis entre nós diferentes;
-- autorrecuperação de Pods;
-- comportamento do ambiente durante falhas de Pods e nós;
-- disponibilidade da aplicação durante os experimentos.
+O foco do projeto não é modificar a lógica do Judge0 ou da plataforma. O objetivo é avaliar, na prática, como a infraestrutura influencia:
 
-> O objetivo não é substituir o a plataforma ou modificar sua lógica de negócio. O cluster fornece a infraestrutura responsável pela execução automatizada dos códigos enviados pela plataforma.
+- o recebimento concorrente de submissões;
+- a distribuição dos trabalhos entre múltiplos Workers;
+- o escalonamento horizontal com HPA;
+- a persistência e a replicação de Redis e PostgreSQL;
+- a recuperação diante da falha de Pods e nodes;
+- a latência, a vazão, a taxa de sucesso e os limites do cluster.
 
----
+## Destaques técnicos
 
-# Arquitetura atual
+- cluster físico com **1 control plane ARM** e **2 nodes AMD64**;
+- duas réplicas da API distribuídas por **Pod Anti-Affinity**;
+- Workers com `COUNT=2`, requests/limits e escala horizontal por HPA;
+- PostgreSQL Primary/Replica por **streaming replication**;
+- Redis com AOF, replicação e experimentos com **Redis Sentinel**;
+- armazenamento por PV/PVC locais e política `Retain`;
+- testes automatizados de carga, falha e recuperação;
+- monitoramento com Prometheus, kube-state-metrics e Grafana;
+- coleta de eventos, CPU, memória, criação de Pods e decisões do HPA.
+
+## Arquitetura experimental
 
 ```text
-                         Plataforma web
-                          |
-                          v
-                +-------------------+
-                | judge0-service    |
-                | Service/NodePort  |
-                +---------+---------+
-                          |
-               +----------+----------+
-               |                     |
-               v                     v
-        +-------------+       +-------------+
-        | Judge0 API  |       | Judge0 API  |
-        |   Pod 1     |       |   Pod 2     |
-        +------+------+       +------+------+
-               |                     |
-               +----------+----------+
-                          |
-              +-----------+-----------+
-              |                       |
-              v                       v
-      +---------------+       +----------------+
-      | Redis Primary |       | PostgreSQL     |
-      |     fila      |       |    Primary     |
-      +-------+-------+       +--------+-------+
-              |                        |
-              | replicação             | streaming replication
-              v                        v
-      +---------------+       +----------------+
-      | Redis Replica |       | PostgreSQL     |
-      |               |       |    Replica     |
-      +---------------+       +----------------+
-
-              Redis
-                |
-                v
-       +------------------+
-       | Judge0 Workers   |
-       | 4 Pods iniciais  |
-       | COUNT=2 por Pod  |
-       +--------+---------+
-                |
-                v
-          Execução do código
+                         Dev³ / cliente de carga
+                                  |
+                                  v
+                       +---------------------+
+                       | judge0-service      |
+                       | Service / NodePort  |
+                       +----------+----------+
+                                  |
+                       +----------+----------+
+                       |                     |
+                       v                     v
+                +-------------+       +-------------+
+                | Judge0 API  |       | Judge0 API  |
+                |   Pod 1     |       |   Pod 2     |
+                +------+------+       +------+------+
+                       |                     |
+                       +----------+----------+
+                                  |
+                +-----------------+-----------------+
+                |                                   |
+                v                                   v
+        +------------------+               +------------------+
+        | Redis / Resque   |               | PostgreSQL       |
+        | fila assíncrona  |               | persistência     |
+        +--------+---------+               +---------+--------+
+                 |                                   |
+                 v                                   v
+        +------------------+               +------------------+
+        | Redis Replica    |               | PostgreSQL       |
+        | + Sentinel       |               | Replica          |
+        +------------------+               +------------------+
+                 |
+                 v
+        +---------------------------+
+        | Judge0 Workers            |
+        | 4 a 10 Pods pelo HPA      |
+        | COUNT=2 por Pod           |
+        +-------------+-------------+
+                      |
+                      v
+             compilação e execução
 ```
 
-O `Service` fornece um ponto estável de acesso às instâncias da API. As submissões recebidas pela API são enfileiradas no Redis e posteriormente consumidas pelos Workers. O PostgreSQL mantém os dados persistentes utilizados pelo Judge0.
-
----
-
-## Distribuição física
-
-O cluster possui um nó de controle e dois nós AMD64 destinados às cargas do Judge0.
+### Distribuição física
 
 ```text
-Control Plane
-└── arquitetura ARM
-    └── gerenciamento do cluster
+srv-kube-master-cplane
+└── Raspberry Pi / ARM
+    └── control plane Kubernetes
 
-srv-kube-worker-1
+srv-kube-worker-1 / AMD64
 ├── PostgreSQL Primary
 ├── Redis Replica
 ├── Judge0 API
 └── Judge0 Workers
 
-srv-kube-worker-2
+srv-kube-worker-2 / AMD64
 ├── PostgreSQL Replica
 ├── Redis Primary
 ├── Judge0 API
 └── Judge0 Workers
 ```
 
-A API e os Workers utilizam:
+A API e os Workers usam `nodeSelector` para arquitetura AMD64. As duas APIs utilizam anti-affinity obrigatória para evitar que sejam executadas no mesmo node.
 
-```yaml
-nodeSelector:
-  kubernetes.io/arch: amd64
-```
+## Configuração experimental de referência
 
-Isso impede que essas cargas sejam agendadas no nó ARM sem prendê-las a um Worker específico.
+| Componente | Configuração |
+|---|---|
+| Judge0 API | 2 réplicas, `RAILS_SERVER_PROCESSES=2`, `RAILS_MAX_THREADS=4` |
+| Workers | mínimo 4 réplicas, máximo 10 pelo HPA |
+| Paralelismo interno | `COUNT=2` por Worker |
+| CPU do Worker | request `500m`, limit `1500m` |
+| Memória do Worker | request `512Mi`, limit `2048Mi` |
+| HPA | alvo de CPU igual a 100% do request |
+| PostgreSQL | Primary + Replica por streaming replication |
+| Redis | AOF, replicação e Sentinel avaliados experimentalmente |
 
-Para as duas réplicas da API é utilizada **Pod Anti-Affinity**, de forma que as duas instâncias não sejam executadas no mesmo nó:
+## Resultados principais
 
-```yaml
-affinity:
-  podAntiAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      - labelSelector:
-          matchExpressions:
-            - key: app
-              operator: In
-              values:
-                - srv-judge0
-        topologyKey: kubernetes.io/hostname
-```
+### Paralelismo interno dos Workers
 
-Como existem apenas dois node Workers no cluster Kubernetes, o RollingUpdate da API pode ser configurado para não tentar criar uma terceira instância durante uma atualização:
+| COUNT | Execuções | Tempo | Vazão | Resultado |
+|---:|---:|---:|---:|---|
+| 1 | 200/200 | 70,470 s | 2,84 exec./s | Estável |
+| 2 | 200/200 | 43,265 s | 4,62 exec./s | Melhor equilíbrio |
+| 3 | 200/200 | 48,114 s | 4,16 exec./s | Estável |
+| 4 | — | — | — | Instabilidade/OOM |
 
-```yaml
-strategy:
-  type: RollingUpdate
-  rollingUpdate:
-    maxSurge: 0
-    maxUnavailable: 1
-```
+### Teste prolongado com HPA
 
----
+O teste teve aproximadamente duas horas, 24 rodadas e seis níveis progressivos de carga. Cada nível foi repetido quatro vezes.
 
-# Componentes
+| Execuções por rodada | Concorrência | Accepted | Falhas POST | Vazão média | p95 médio |
+|---:|---:|---:|---:|---:|---:|
+| 600 | 10 | 2400/2400 | 0 | 7,97 exec./s | 1,64 s |
+| 800 | 20 | 3200/3200 | 0 | 11,52 exec./s | 2,55 s |
+| 1000 | 30 | 4000/4000 | 0 | 13,23 exec./s | 3,33 s |
+| 1200 | 40 | 4800/4800 | 0 | 13,29 exec./s | 4,23 s |
+| 1500 | 50 | 5997/6000 | 3 | 13,23 exec./s | 5,15 s |
+| 2000 | 75 | 7147/8000 | 853 | 13,79 exec./s | 5,67 s |
 
-| Componente | Função | Configuração atual |
-|---|---|---|
-| **Judge0 API** | Receber e consultar submissões | 2 réplicas |
-| **Judge0 Workers** | Consumir a fila e executar códigos | 4 réplicas iniciais |
-| **Redis Primary** | Fila principal do Judge0 | Worker 2 + AOF + PVC |
-| **Redis Replica** | Réplica da fila | Worker 1 + AOF + PVC |
-| **PostgreSQL Primary** | Banco principal | Worker 1 + PVC |
-| **PostgreSQL Replica** | Standby por streaming replication | Worker 2 + PVC |
-| **Service** | Endpoint estável para a API | NodePort |
-| **HPA** | Escalonamento horizontal dos Workers | baseado em CPU |
-| **Prometheus** | Coleta de métricas | monitoramento |
-| **kube-state-metrics** | Métricas de objetos Kubernetes | monitoramento |
-| **Grafana** | Visualização das métricas | dashboards |
+Durante esse experimento:
 
----
+- o HPA saiu do mínimo de 4 e chegou ao máximo de **10 réplicas**;
+- a utilização registrada pelo HPA chegou a **279%** do objetivo;
+- mesmo com 10 réplicas, houve períodos com CPU acima da meta;
+- o `worker-1` chegou a aproximadamente **99% de CPU** e o `worker-2` a **96%**;
+- os novos Pods passaram por `Pending → ContainerCreating → Running`;
+- não foram observados eventos de `Insufficient cpu` nessa execução;
+- a vazão entrou em um platô próximo de 13 execuções/s, enquanto a latência e as falhas aumentaram.
 
-# Persistência
+**Leitura do resultado:** 1200 execuções com concorrência 40 foram o maior nível concluído sem falhas em todas as repetições. O nível 1500/50 ainda obteve 99,95% de sucesso. Em 2000/75, a taxa de aceitação caiu para aproximadamente 89,34%, caracterizando uma região de saturação do ambiente avaliado.
 
-## PostgreSQL
+### Testes de falha
 
-O PostgreSQL deixou de utilizar armazenamento efêmero e passou a utilizar `PersistentVolume` e `PersistentVolumeClaim`.
+Em três rodadas de 800 submissões, um node de execução foi reiniciado aproximadamente na metade do processamento, mantendo Redis e PostgreSQL no outro node. O cliente confirmou 2381 das 2400 submissões como `Accepted`, mostrando continuidade parcial com perda temporária de capacidade.
 
-```text
-PostgreSQL Primary
-        |
-        v
- postgres-data
-        |
-        v
-postgres-pv-primary
-        |
-        v
-armazenamento local do Worker 1
-```
+Em um cenário mais crítico, o node indisponível também hospedava Redis, PostgreSQL, uma API e parte dos Workers. A indisponibilidade dos componentes stateful comprometeu o recebimento de novas submissões, demonstrando que replicar apenas API e Workers não elimina todos os pontos únicos de falha.
 
-A réplica possui seu próprio volume no Worker 2:
+## O que o projeto demonstra
 
-```text
-PostgreSQL Replica
-        |
-        v
-postgres-replica-data
-        |
-        v
-postgres-pv-replica
-        |
-        v
-armazenamento local do Worker 2
-```
+1. **Mais paralelismo não produz ganho linear.** O melhor valor de `COUNT` depende dos recursos disponíveis.
+2. **O HPA reage corretamente à CPU**, mas não cria capacidade física inexistente.
+3. **Escalar Pods não resolve sozinho Redis e PostgreSQL.** Componentes stateful exigem replicação e failover próprios.
+4. **Replicação não é sinônimo de alta disponibilidade.** A aplicação cliente também precisa localizar o novo Primary.
+5. **A capacidade deve ser medida por vazão, latência e falhas**, e não apenas pelo número total de requisições processadas.
 
-A sincronização entre as instâncias utiliza **streaming replication**. O standby é inicializado a partir de uma cópia do Primary feita com `pg_basebackup`.
-
-Validação:
-
-```bash
-kubectl exec deploy/db-replica -- \
-  psql -U judge0 -d postgres \
-  -c "SELECT pg_is_in_recovery();"
-```
-
-Resultado esperado:
-
-```text
-t
-```
-
-No Primary:
-
-```bash
-kubectl exec deploy/db -- \
-  psql -U judge0 -d postgres \
-  -c "SELECT client_addr, usename, application_name, state, sync_state FROM pg_stat_replication;"
-```
-
-O estado esperado da réplica é:
-
-```text
-state = streaming
-```
-
----
-
-## Redis
-
-O Redis utiliza persistência AOF:
-
-```text
---appendonly yes
-```
-
-O Primary e a Replica possuem volumes independentes.
-
-```text
-Worker 1                         Worker 2
-
-Redis Replica   <-------------  Redis Primary
-     |            replicação          |
-     v                                v
-PVC Replica                       PVC Primary
-```
-
-Validação no Primary:
-
-```bash
-kubectl exec deploy/redis -- sh -c \
-'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli INFO replication'
-```
-
-Resultado esperado:
-
-```text
-role:master
-connected_slaves:1
-```
-
-Validação na Replica:
-
-```bash
-kubectl exec deploy/redis-replica -- sh -c \
-'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli INFO replication'
-```
-
-Resultado esperado:
-
-```text
-role:slave
-master_host:redis
-master_link_status:up
-```
-
-Teste simples:
-
-```bash
-kubectl exec deploy/redis -- sh -c \
-'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli SET teste-replica "funcionando"'
-```
-
-```bash
-kubectl exec deploy/redis-replica -- sh -c \
-'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli GET teste-replica'
-```
-
-Resultado:
-
-```text
-funcionando
-```
-
-> **Importante:** replicação não significa failover automático. No estado atual do projeto, a existência das réplicas protege os dados e permite testes de promoção, mas a troca automática de Primary ainda precisa de um mecanismo específico de failover.
-
----
-
-# Estrutura sugerida do repositório
+## Organização do repositório
 
 ```text
 judge0-kubernetes/
-|
-|-- judge0/
-|   |
-|   |-- config/
-|   |   |-- judge0.conf.example
-|   |   `-- .env.example
-|   |
-|   |-- db/
-|   |   |-- primary/
-|   |   |   |-- db.yaml
-|   |   |   |-- db-pv.yaml
-|   |   |   |-- db-pvc.yaml
-|   |   |   `-- services.yaml
-|   |   |
-|   |   `-- replica/
-|   |       |-- db-replica.yaml
-|   |       |-- replica-db-pv.yaml
-|   |       |-- replica-db-pvc.yaml
-|   |       `-- services.yaml
-|   |
-|   |-- redis/
-|   |   |-- primary/
-|   |   |   |-- redis.yaml
-|   |   |   |-- redis-pv.yaml
-|   |   |   |-- redis-pvc.yaml
-|   |   |   `-- services.yaml
-|   |   |
-|   |   `-- replica/
-|   |       |-- redis-replica.yaml
-|   |       |-- redis-pv.yaml
-|   |       |-- redis-pvc.yaml
-|   |       `-- services.yaml
-|   |
-|   |-- deployments.yaml
-|   |-- services.yaml
-|   |-- hpa.yaml
-|   `-- REGISTROS.md
-|
-|-- monitor/
-|   `-- monitor.yaml
-|
-|-- .gitignore
-`-- README.md
+├── judge0/
+│   ├── config/
+│   ├── db/
+│   │   ├── primary/
+│   │   └── replica/
+│   ├── redis/
+│   │   ├── primary/
+│   │   ├── replica/
+│   │   └── sentinel/
+│   ├── deployments.yaml
+│   ├── services.yaml
+│   └── hpa.yaml
+├── testes/
+├── monitor/
+├── replicacao/
+├── docs/
+└── README.md
 ```
 
-A estrutura acima separa os componentes com estado dos componentes que podem ser distribuídos livremente pelo Scheduler.
+## Implantação resumida
 
----
-
-# Configuração e Secrets
-
-Credenciais reais **não devem ser versionadas no Git**.
-
-Utilize arquivos locais para os valores sensíveis:
-
-```text
-.env
-judge0.conf
-```
-
-E mantenha no repositório apenas modelos:
-
-```text
-.env.example
-judge0.conf.example
-```
-
-Exemplo de `.env.example`:
-
-```env
-REDIS_HOST=redis
-REDIS_PORT=6379
-REDIS_PASSWORD=
-
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-POSTGRES_DB=judge0
-POSTGRES_USER=judge0
-POSTGRES_PASSWORD=
-
-RAILS_ENV=production
-```
-
-Criação do Secret das variáveis:
+> Os manifests devem ser revisados conforme nodes, caminhos de volumes e credenciais do ambiente de destino.
 
 ```bash
-kubectl create secret generic judge0-env \
-  --from-env-file=.env \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-Criação do arquivo de configuração utilizado pelo Judge0:
-
-```bash
-kubectl create secret generic vol-config \
-  --from-file=judge0.conf=config/judge0.conf \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-> Kubernetes Secrets não devem ser tratados como um cofre por si só. O acesso ao cluster, RBAC e ao armazenamento do control plane também deve ser protegido.
-
----
-
-# Arquivos que não devem ir para o Git
-
-Exemplo de `.gitignore`:
-
-```gitignore
-# Credenciais
-.env
-.env.*
-!.env.example
-
-# Configuração real
-judge0.conf
-!judge0.conf.example
-
-# Kubernetes
-kubeconfig
-*.kubeconfig
-secret.yaml
-secrets.yaml
-*-secret.yaml
-*-secrets.yaml
-
-# Chaves
-*.key
-*.pem
-id_rsa
-id_ed25519
-
-# Banco / backups
-*.sql
-*.dump
-*.backup
-backups/
-
-# Logs
-*.log
-logs/
-
-# Dados locais
-data/
-postgres-data/
-redis-data/
-
-# Editores / sistema
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-```
-
----
-
-# Implantação
-
-## 1. Verificar o cluster
-
-```bash
-kubectl get nodes -o wide
-```
-
-## 2. Criar os Secrets
-
-```bash
+# 1. Configurações e Secrets
 kubectl get secret judge0-env
 kubectl get secret vol-config
-```
 
-Caso ainda não existam, crie-os conforme a seção anterior.
-
-## 3. PostgreSQL
-
-```bash
+# 2. PostgreSQL
 kubectl apply -f judge0/db/primary/
 kubectl apply -f judge0/db/replica/
-```
 
-Verifique:
-
-```bash
-kubectl get pods -l app=db -o wide
-kubectl get pods -l app=db-replica -o wide
-kubectl get pv,pvc
-```
-
-## 4. Redis
-
-```bash
+# 3. Redis
 kubectl apply -f judge0/redis/primary/
 kubectl apply -f judge0/redis/replica/
-```
+kubectl apply -f judge0/redis/sentinel/
 
-Verifique:
-
-```bash
-kubectl get pods -l app=redis -o wide
-kubectl get pods -l app=redis-replica -o wide
-kubectl get pv,pvc
-```
-
-## 5. API e Workers
-
-```bash
+# 4. API, Workers, Service e HPA
 kubectl apply -f judge0/deployments.yaml
 kubectl apply -f judge0/services.yaml
-```
-
-Caso o HPA esteja separado:
-
-```bash
 kubectl apply -f judge0/hpa.yaml
-```
 
-## 6. Verificar o ambiente
-
-```bash
+# 5. Estado geral
 kubectl get pods -o wide
 kubectl get svc
-kubectl get deployments
 kubectl get hpa
 kubectl get pv,pvc
 ```
 
----
+<details>
+<summary><strong>Validações rápidas</strong></summary>
 
-# Acesso ao Judge0
-
-No cluster físico, o acesso externo ao Judge0 é realizado através do `Service` da API.
-
-Verifique:
-
-```bash
-kubectl get svc judge0-service
-```
-
-Exemplo de teste:
-
-```bash
-curl http://<NODE_IP>:<NODEPORT>/system_info
-```
-
-ou:
-
-```bash
-curl http://<NODE_IP>:<NODEPORT>/languages
-```
-
-O serviço deve apontar para o `Service`, e não diretamente para o IP de um Pod da API.
-
----
-
-# Escalabilidade
-
-## Workers
-
-Os Workers são separados da API para que a capacidade de execução possa ser aumentada sem necessariamente aumentar o número de instâncias que recebem requisições.
-
-Escala manual:
-
-```bash
-kubectl scale deployment wk-judge0 --replicas=6
-```
-
-Verificação:
-
-```bash
-kubectl get pods -l app=wk-judge0 -o wide
-```
-
-## HPA
-
-O HorizontalPodAutoscaler pode ajustar automaticamente a quantidade de Workers com base nas métricas definidas no manifesto.
+### HPA e Workers
 
 ```bash
 kubectl get hpa
+kubectl describe hpa wk-judge0-hpa
+kubectl top pods -l app=wk-judge0
 ```
+
+### PostgreSQL Replica
 
 ```bash
-kubectl describe hpa wk-judge0
+kubectl exec deploy/db-replica -- \
+  psql -U judge0 -d judge0 \
+  -c "SELECT pg_is_in_recovery();"
 ```
 
-> O HPA reage às métricas configuradas, como utilização de CPU. Ele não deve ser interpretado como um mecanismo que detecta diretamente a falha de um nó.
+### Redis
 
----
+```bash
+kubectl exec deploy/redis -- sh -c \
+'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli INFO replication'
+```
 
-# Distribuição da API
-
-A API possui duas réplicas e utiliza anti-affinity para evitar que ambas fiquem no mesmo Worker.
-
-Validação:
+### Distribuição da API
 
 ```bash
 kubectl get pods -l app=srv-judge0 -o wide
 ```
 
-O esperado é:
+</details>
 
-```text
-API 1 -> Worker 1
-API 2 -> Worker 2
-```
+## Credenciais e arquivos sensíveis
 
----
+Não versione:
 
-# Autorrecuperação
+- `.env` real;
+- `judge0.conf` real;
+- Secrets exportados;
+- kubeconfig;
+- certificados e chaves privadas;
+- dumps de banco;
+- logs contendo tokens ou dados internos.
 
-Para observar a reposição de um Pod gerenciado pelo Deployment:
+Mantenha apenas modelos como `.env.example` e `judge0.conf.example`.
 
-```bash
-kubectl get pods -l app=wk-judge0 -w
-```
+## Limitações e próximos passos
 
-Em outro terminal:
+- os PVs locais permanecem vinculados fisicamente aos nodes;
+- PostgreSQL possui replicação, mas a promoção automática ainda precisa ser implementada;
+- o failover do Redis foi avaliado, porém a descoberta automática do novo Primary pelo cliente Judge0 ainda precisa ser concluída e validada ponta a ponta;
+- o control plane está concentrado em um único node ARM com memória limitada;
+- a disponibilidade temporal formal ainda precisa ser medida em uma janela definida;
+- os resultados representam este cluster e não devem ser tratados como limites universais do Judge0 ou do Kubernetes.
 
-```bash
-kubectl delete pod <NOME_DO_POD>
-```
+## Tecnologias
 
-O Deployment mantém o estado desejado e cria uma nova instância para substituir o Pod removido.
+`Kubernetes` · `Docker` · `containerd` · `Judge0` · `Redis` · `Redis Sentinel` · `PostgreSQL` · `Prometheus` · `Grafana` · `Python` · `Bash` · `Linux`
 
-> Autorrecuperação não é rollback. Rollback corresponde ao retorno de um Deployment para uma revisão anterior.
-
----
-
-# Testes de disponibilidade
-
-Os testes de disponibilidade são realizados provocando falhas controladas enquanto submissões estão em processamento.
-
-Exemplos:
-
-- remoção de um Pod da API;
-- remoção de um Worker;
-- reinicialização de um nó de execução;
-- indisponibilidade de um nó que contém um componente Primary;
-- validação da persistência após recriação do Pod;
-- promoção controlada de uma réplica.
-
-Durante os testes são observados:
-
-```text
-requisições enviadas
-requisições aceitas
-falhas de POST
-submissões concluídas
-timeouts de polling
-tempo total
-throughput
-estado dos Pods
-estado dos Nodes
-estado da fila
-```
-
-Os resultados experimentais devem permanecer separados da documentação de implantação:
-
-```text
-README.md     -> arquitetura e reprodução
-REGISTROS.md  -> resultados e observações dos experimentos
-```
-
----
-
-# Monitoramento
-
-A camada de monitoramento utiliza:
-
-```text
-kube-state-metrics
-        |
-        v
-   Prometheus
-        |
-        v
-     Grafana
-```
-
-O objetivo do monitoramento neste projeto é auxiliar os experimentos e a apresentação dos resultados, sem transformar observabilidade no foco principal do trabalho.
-
-Podem ser acompanhados:
-
-- estado dos Pods;
-- quantidade de réplicas desejadas e disponíveis;
-- reinicializações;
-- estado da API;
-- quantidade de Workers;
-- utilização de CPU e memória;
-- comportamento do HPA;
-- disponibilidade dos componentes.
-
-Verifique:
-
-```bash
-kubectl get pods -n monitor
-```
-
----
-
-# Ambiente local com Minikube
-
-O Minikube foi utilizado na etapa inicial do projeto para validar a separação dos componentes e os primeiros experimentos.
-
-Exemplo:
-
-```bash
-minikube start -p judge0-local \
-  --driver=docker \
-  --cpus=2 \
-  --memory=4096
-```
-
-O ambiente físico passou a ser utilizado posteriormente para avaliar distribuição real entre máquinas, persistência local, falhas de nós e replicação entre Workers.
-
-## Resultados experimentais
-
-A infraestrutura foi submetida a diferentes cenários de carga e falha,
-incluindo:
-
-- até 2.000 submissões em ambiente saudável;
-- testes com diferentes níveis de concorrência;
-- escalabilidade horizontal dos Workers;
-- perda controlada de nodes;
-- falha do Redis Primary;
-- falha do PostgreSQL Primary;
-- replicação de dados;
-- failover automático utilizando Redis Sentinel;
-- análise de throughput, latência, p95, erros e tempo de recuperação.
-
----
-
-# Limitações atuais
-
-Alguns pontos devem ser considerados ao interpretar o ambiente:
-
-1. Os `PersistentVolumes` utilizados são locais e, portanto, vinculados fisicamente aos nós que armazenam os dados.
-2. PostgreSQL Primary + Replica fornece replicação, mas não representa sozinho failover automático.
-3. Redis Primary + Replica fornece replicação, mas a promoção automática exige um mecanismo adicional, como Redis Sentinel.
-4. Com apenas dois Workers, a falha de um deles reduz significativamente a capacidade computacional disponível.
-5. O HPA escala Pods com base nas métricas configuradas; ele não substitui mecanismos de alta disponibilidade para banco de dados e fila.
-6. Os resultados obtidos representam este cluster e estas configurações e não devem ser interpretados como limites universais do Judge0 ou do Kubernetes.
-
----
-
-# Documentação e referências utilizadas
-
-As referências abaixo são, preferencialmente, documentações oficiais utilizadas ao longo da implantação e dos experimentos.
-
-## Judge0
+## Referências principais
 
 - [Judge0 — repositório oficial](https://github.com/judge0/judge0)
-- [Judge0 — arquivo oficial `judge0.conf`](https://github.com/judge0/judge0/blob/master/judge0.conf)
 - [Judge0 — documentação da API](https://ce.judge0.com/)
-- [Judge0 — Configuration Info](https://github.com/judge0/judge0/blob/master/docs/api/system_and_configuration/configuration_info.md)
-
-## Kubernetes — conceitos e cluster
-
-- [Kubernetes — Concepts](https://kubernetes.io/docs/concepts/)
-- [Kubernetes — Creating a cluster with kubeadm](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/)
-- [Kubernetes — Installing kubeadm](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/)
+- [Kubernetes — Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/)
 - [Kubernetes — Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
 - [Kubernetes — Services](https://kubernetes.io/docs/concepts/services-networking/service/)
-- [Kubernetes — Services, Load Balancing and Networking](https://kubernetes.io/docs/concepts/services-networking/)
-- [Kubernetes — Self-Healing](https://kubernetes.io/docs/concepts/architecture/self-healing/)
-
-## Kubernetes — escalabilidade e recursos
-
-- [Kubernetes — Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/)
-- [Kubernetes — Resource Management for Pods and Containers](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
-- [Kubernetes — Deployment RollingUpdate](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#rolling-update-deployment)
-
-## Kubernetes — agendamento
-
-- [Kubernetes — Assigning Pods to Nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
-- [Kubernetes — Pod Affinity and Anti-Affinity](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity)
-- [Kubernetes — Pod Topology Spread Constraints](https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/)
-- [Kubernetes — Taints and Tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/)
-
-## Kubernetes — armazenamento e configuração
-
 - [Kubernetes — Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
-- [Kubernetes — Volumes / Local volumes](https://kubernetes.io/docs/concepts/storage/volumes/#local)
-- [Kubernetes — Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)
+- [PostgreSQL — Streaming Replication](https://www.postgresql.org/docs/current/warm-standby.html)
+- [Redis — Replication](https://redis.io/docs/latest/operate/oss_and_stack/management/replication/)
+- [Redis — Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/)
 
-## PostgreSQL
+## Autor
 
-- [PostgreSQL — Replication settings](https://www.postgresql.org/docs/current/runtime-config-replication.html)
-- [PostgreSQL — Log-Shipping Standby Servers / Streaming Replication](https://www.postgresql.org/docs/current/warm-standby.html)
-- [PostgreSQL — `pg_basebackup`](https://www.postgresql.org/docs/current/app-pgbasebackup.html)
-- [PostgreSQL — `pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html)
+**Paulo Henrique da Rosa**  
+Tecnologia em Análise e Desenvolvimento de Sistemas — IFPR
 
-## Redis
-
-- [Redis — Replication](https://redis.io/docs/latest/manual/replication/)
-- [Redis — Persistence](https://redis.io/docs/latest/management/persistence/)
-- [Redis — High availability with Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/)
-
-## Monitoramento
-
-- [Prometheus — Overview](https://prometheus.io/docs/introduction/overview/)
-- [Prometheus — First steps](https://prometheus.io/docs/introduction/first_steps/)
-- [Grafana — Documentation](https://grafana.com/docs/grafana/latest/)
-- [Grafana — Getting started](https://grafana.com/docs/grafana/latest/fundamentals/getting-started/)
-- [kube-state-metrics — projeto oficial](https://github.com/kubernetes/kube-state-metrics)
-
-## Rede, runtime e ambiente local
-
-- [Flannel — projeto oficial](https://github.com/flannel-io/flannel)
-- [containerd — documentação](https://containerd.io/docs/)
-- [Docker — documentação](https://docs.docker.com/)
-- [Minikube — documentação](https://minikube.sigs.k8s.io/docs/)
-- [Minikube — `minikube start`](https://minikube.sigs.k8s.io/docs/commands/start/)
-
----
-
-# Trabalho de Conclusão de Curso
-
-Este repositório faz parte do desenvolvimento prático do TCC sobre avaliação de uma infraestrutura Kubernetes aplicada à execução automatizada de códigos.
-
-O ambiente é utilizado para relacionar conceitos de:
-
-```text
-Online Judge
-     +
-Judge0
-     +
-Kubernetes
-     +
-filas
-     +
-balanceamento de carga
-     +
-escalabilidade
-     +
-persistência
-     +
-disponibilidade
-```
-
-com resultados obtidos em um cluster físico experimental.
+- [LinkedIn](https://www.linkedin.com/in/hxpaulo/)
+- [Portfólio](https://paulodarosa.com)
