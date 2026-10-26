@@ -1,5 +1,6 @@
-<p align="center">
-  <img src="docs/images/social-preview.jpg" alt="Judge0 no Kubernetes" width="100%">
+<img width="1280" height="640" alt="judge0_kubernetes_social_preview_1280x640 (1)" src="https://github.com/user-attachments/assets/e1c32cac-6669-4811-a760-aeb11c11e24a" /><p align="center">
+  <img src="<img width="1280" height="640" alt="judge0_kubernetes_social_preview_1280x640 (1)" src="https://github.com/user-attachments/assets/733f6420-4e7c-47ee-9a86-70b4223a5ca8" />
+" alt="Judge0 no Kubernetes" width="100%">
 </p>
 
 <h1 align="center">Judge0 no Kubernetes</h1>
